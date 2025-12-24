@@ -162,6 +162,12 @@ struct LocalizedStrings {
         "empty.startProxyToView": [.english: "Start the proxy to view quota information", .vietnamese: "Khởi động proxy để xem thông tin hạn mức"],
         "empty.noAccounts": [.english: "No Accounts", .vietnamese: "Chưa có tài khoản"],
         "empty.addProviderAccounts": [.english: "Add provider accounts to view quota", .vietnamese: "Thêm tài khoản nhà cung cấp để xem hạn mức"],
+        
+        // Subscription
+        "subscription.upgrade": [.english: "Upgrade", .vietnamese: "Nâng cấp"],
+        "subscription.freeTier": [.english: "Free Tier", .vietnamese: "Gói miễn phí"],
+        "subscription.proPlan": [.english: "Pro Plan", .vietnamese: "Gói Pro"],
+        "subscription.project": [.english: "Project", .vietnamese: "Dự án"],
     ]
     
     static func get(_ key: String, language: AppLanguage) -> String {

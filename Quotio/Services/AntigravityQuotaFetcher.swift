@@ -74,6 +74,60 @@ struct ProviderQuotaData: Codable {
     }
 }
 
+// MARK: - Subscription Info Models
+
+struct SubscriptionTier: Codable {
+    let id: String
+    let name: String
+    let description: String
+    let privacyNotice: PrivacyNotice?
+    let isDefault: Bool?
+    let upgradeSubscriptionUri: String?
+    let upgradeSubscriptionText: String?
+    let upgradeSubscriptionType: String?
+    let userDefinedCloudaicompanionProject: Bool?
+}
+
+struct PrivacyNotice: Codable {
+    let showNotice: Bool?
+    let noticeText: String?
+}
+
+struct SubscriptionInfo: Codable {
+    let currentTier: SubscriptionTier?
+    let allowedTiers: [SubscriptionTier]?
+    let cloudaicompanionProject: String?
+    let gcpManaged: Bool?
+    let upgradeSubscriptionUri: String?
+    let paidTier: SubscriptionTier?
+    
+    var tierDisplayName: String {
+        currentTier?.name ?? "Unknown"
+    }
+    
+    var tierDescription: String {
+        currentTier?.description ?? ""
+    }
+    
+    var tierId: String {
+        currentTier?.id ?? "unknown"
+    }
+    
+    var isPaidTier: Bool {
+        guard let id = currentTier?.id else { return false }
+        return id == "g1-pro-tier" || id == "standard-tier"
+    }
+    
+    var canUpgrade: Bool {
+        currentTier?.upgradeSubscriptionUri != nil
+    }
+    
+    var upgradeURL: URL? {
+        guard let uri = currentTier?.upgradeSubscriptionUri else { return nil }
+        return URL(string: uri)
+    }
+}
+
 // MARK: - API Response Models
 
 private struct QuotaAPIResponse: Codable {
@@ -247,6 +301,11 @@ actor AntigravityQuotaFetcher {
     }
     
     private func fetchProjectId(accessToken: String) async -> String? {
+        let result = await fetchSubscriptionInfo(accessToken: accessToken)
+        return result?.cloudaicompanionProject
+    }
+    
+    func fetchSubscriptionInfo(accessToken: String) async -> SubscriptionInfo? {
         var request = URLRequest(url: URL(string: loadProjectAPIURL)!)
         request.httpMethod = "POST"
         request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -264,16 +323,63 @@ actor AntigravityQuotaFetcher {
                 return nil
             }
             
-            struct ProjectResponse: Codable {
-                let cloudaicompanionProject: String?
-            }
-            
-            let projectResponse = try JSONDecoder().decode(ProjectResponse.self, from: data)
-            return projectResponse.cloudaicompanionProject
+            let subscriptionInfo = try JSONDecoder().decode(SubscriptionInfo.self, from: data)
+            return subscriptionInfo
             
         } catch {
             return nil
         }
+    }
+    
+    func fetchSubscriptionInfoForAuthFile(at path: String) async -> SubscriptionInfo? {
+        let url = URL(fileURLWithPath: path)
+        guard let data = try? Data(contentsOf: url),
+              var authFile = try? JSONDecoder().decode(AntigravityAuthFile.self, from: data) else {
+            return nil
+        }
+        
+        var accessToken = authFile.accessToken
+        
+        if authFile.isExpired, let refreshToken = authFile.refreshToken {
+            do {
+                accessToken = try await refreshAccessToken(refreshToken: refreshToken)
+                authFile.accessToken = accessToken
+                
+                if let updatedData = try? JSONEncoder().encode(authFile) {
+                    try? updatedData.write(to: url)
+                }
+            } catch {
+                return nil
+            }
+        }
+        
+        return await fetchSubscriptionInfo(accessToken: accessToken)
+    }
+    
+    func fetchAllSubscriptionInfo(authDir: String = "~/.cli-proxy-api") async -> [String: SubscriptionInfo] {
+        let expandedPath = NSString(string: authDir).expandingTildeInPath
+        let fileManager = FileManager.default
+        
+        guard let files = try? fileManager.contentsOfDirectory(atPath: expandedPath) else {
+            return [:]
+        }
+        
+        var results: [String: SubscriptionInfo] = [:]
+        
+        for file in files where file.hasPrefix("antigravity-") && file.hasSuffix(".json") {
+            let filePath = (expandedPath as NSString).appendingPathComponent(file)
+            
+            if let info = await fetchSubscriptionInfoForAuthFile(at: filePath) {
+                let email = file
+                    .replacingOccurrences(of: "antigravity-", with: "")
+                    .replacingOccurrences(of: ".json", with: "")
+                    .replacingOccurrences(of: "_", with: ".")
+                    .replacingOccurrences(of: ".gmail.com", with: "@gmail.com")
+                results[email] = info
+            }
+        }
+        
+        return results
     }
     
     func fetchQuotaForAuthFile(at path: String) async throws -> ProviderQuotaData {

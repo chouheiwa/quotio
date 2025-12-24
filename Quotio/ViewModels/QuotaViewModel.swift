@@ -19,11 +19,15 @@ final class QuotaViewModel {
     var usageStats: UsageStats?
     var logs: [LogEntry] = []
     var isLoading = false
+    var isLoadingQuotas = false
     var errorMessage: String?
     var oauthState: OAuthState?
     
     /// Quota data per provider per account (email -> QuotaData)
     var providerQuotas: [AIProvider: [String: ProviderQuotaData]] = [:]
+    
+    /// Subscription info per account (email -> SubscriptionInfo)
+    var subscriptionInfos: [String: SubscriptionInfo] = [:]
     
     private var refreshTask: Task<Void, Never>?
     private var lastLogTimestamp: Int?
@@ -119,8 +123,15 @@ final class QuotaViewModel {
     }
     
     func refreshAntigravityQuotas() async {
+        isLoadingQuotas = true
+        
         let quotas = await antigravityFetcher.fetchAllAntigravityQuotas()
         providerQuotas[.antigravity] = quotas
+        
+        let subscriptions = await antigravityFetcher.fetchAllSubscriptionInfo()
+        subscriptionInfos = subscriptions
+        
+        isLoadingQuotas = false
     }
     
     func getQuotaForAccount(provider: AIProvider, email: String) -> ProviderQuotaData? {
