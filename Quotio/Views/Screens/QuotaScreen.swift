@@ -360,7 +360,13 @@ private struct AccountQuotaCardV2: View {
     @State private var isRefreshing = false
     @State private var showSwitchSheet = false
     @State private var showModelsDetailSheet = false
-    @State private var isReauthenticating = false
+
+    /// Check if OAuth is in progress for this provider
+    private var isReauthenticating: Bool {
+        guard let oauthState = viewModel.oauthState else { return false }
+        return oauthState.provider == provider &&
+               (oauthState.status == .waiting || oauthState.status == .polling)
+    }
     
     private var hasQuotaData: Bool {
         guard let data = account.quotaData else { return false }
@@ -523,9 +529,7 @@ private struct AccountQuotaCardV2: View {
                     // Claude Code: Token expired, show re-authenticate button
                     Button {
                         Task {
-                            isReauthenticating = true
                             await viewModel.startOAuth(for: .claude)
-                            isReauthenticating = false
                         }
                     } label: {
                         if isReauthenticating {
